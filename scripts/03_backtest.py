@@ -1,11 +1,13 @@
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import numpy as np
 import xgboost as xgb
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 
-# 1. Import หัวใจและค่ากำหนดจากโฟลเดอร์ core และ config
+# 1. Import core metrics and config
 from core.metrics import calculate_metrics
 from config.settings import (
     BASE_DATA_PATH, MODEL_SAVE_PATH, PROJECT_ROOT,
@@ -18,50 +20,50 @@ register_matplotlib_converters()
 
 def run_full_dashboard():
     print("📂 Loading data and generating Full Dashboard...")
-    
-    # 2. โหลดข้อมูล (ใช้ Path จาก Config)
+
+    # 2. Load data (paths from config)
     df = pd.read_parquet(BASE_DATA_PATH)
-    
-    # คำนวณ Feature (ใช้ Window Size จาก Config)
+
+    # Compute features (window size from config)
     df['z_score'] = (df['close'] - df['close'].rolling(WINDOW_SIZE).mean()) / df['close'].rolling(WINDOW_SIZE).std()
     df['atr'] = df['close'].rolling(WINDOW_SIZE).std()
     df['hour'] = df.index.hour
     df['day_of_week'] = df.index.dayofweek
     df = df.dropna()
 
-    # 3. โหลด AI Model (XGBoost)
+    # 3. Load AI model (XGBoost)
     print(f"🧠 Loading AI Model from: {MODEL_SAVE_PATH}")
     model = xgb.Booster()
     model.load_model(MODEL_SAVE_PATH)
-    
-    # เตรียมข้อมูลสำหรับ Predict
+
+    # Prepare data for prediction
     features = ['z_score', 'atr', 'hour', 'day_of_week']
     df['prob'] = model.predict(xgb.DMatrix(df[features]))
 
-    # 4. จำลองการเทรด (ใช้ค่าพารามิเตอร์จาก Config)
+    # 4. Simulate trades (parameters from config)
     print(f"🎯 Simulating Trades (Z-Thresh: {Z_THRESHOLD}, Prob: {ML_PROB_LIMIT})")
     temp = df.copy()
     temp['signal'] = 0
-    
-    # จุดเข้า (Entry Logic)
+
+    # Entry logic
     temp.loc[(temp['z_score'] > Z_THRESHOLD) & (temp['prob'] > ML_PROB_LIMIT), 'signal'] = -1
     temp.loc[(temp['z_score'] < -Z_THRESHOLD) & (temp['prob'] > ML_PROB_LIMIT), 'signal'] = 1
-    
-    # จุดออก (Exit Logic) - Time Exit
+
+    # Exit logic — time-based exit after HOLD_BARS bars
     temp['raw_ret'] = (temp['close'].shift(-HOLD_BARS) - temp['close']) * temp['signal']
-    
-    # คำนวณ Dynamic TP/SL
+
+    # Apply dynamic TP/SL clipping
     tp_dist = temp['atr'] * ATR_TP_MULT
     sl_dist = temp['atr'] * ATR_SL_MULT
     temp['raw_ret'] = np.clip(temp['raw_ret'], -sl_dist, tp_dist)
-    
-    # หักลบค่า Spread เฉพาะไม้ที่เทรด
+
+    # Deduct spread cost only on traded bars
     temp['net_pnl'] = np.where(temp['signal'] != 0, temp['raw_ret'] - SPREAD_COST, 0)
-    
-    # 5. คำนวณสถิติภาพรวม (เรียกใช้ฟังก์ชันจาก core.metrics)
+
+    # 5. Compute summary statistics (via core.metrics)
     trades = temp[temp['signal'] != 0]['net_pnl']
     net, pf, mdd = calculate_metrics(trades)
-    
+
     print(f"\n--- 📊 SNIPER V3.0 SUMMARY ---")
     print(f"Total Trades : {len(trades)}")
     print(f"Net Profit   : {net:.6f} Points")
@@ -69,12 +71,12 @@ def run_full_dashboard():
     print(f"Max Drawdown : {mdd:.6f} Points")
     print(f"------------------------------\n")
 
-    # 6. เตรียมข้อมูลสำหรับพล็อตกราฟ
+    # 6. Prepare data for plotting
     temp['cum_pnl'] = temp['net_pnl'].cumsum()
     temp['peak'] = temp['cum_pnl'].cummax()
     temp['drawdown'] = temp['cum_pnl'] - temp['peak']
 
-    # --- 🏗️ สร้างกราฟ Full Dashboard ---
+    # --- Build Full Dashboard ---
     print("📈 Plotting Dashboard...")
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 
@@ -93,7 +95,7 @@ def run_full_dashboard():
     plt.tight_layout()
     plot_path = os.path.join(PROJECT_ROOT, 'output/plots/sniper_full_dashboard.png')
     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
-    
+
     plt.savefig(plot_path, dpi=300)
     print(f"✅ Dashboard saved successfully to: {plot_path}")
 

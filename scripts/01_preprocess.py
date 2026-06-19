@@ -5,69 +5,70 @@ import time
 from tqdm import tqdm
 
 # --- SETTINGS ---
-RAW_CSV_PATH = '/app/data/raw/EURUSD_M1_Combined_2015_2026.csv' 
-PROCESSED_PATH = '/app/data/processed/eurusd_m1.parquet'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_CSV_PATH = os.path.join(_PROJECT_ROOT, 'data', 'raw', 'EURUSD_M1_Combined_2015_2026.csv')
+PROCESSED_PATH = os.path.join(_PROJECT_ROOT, 'data', 'processed', 'eurusd_m1.parquet')
 
 def preprocess_data():
     start_time = time.time()
-    
+
     if not os.path.exists(RAW_CSV_PATH):
-        print(f"❌ Error: ไม่พบไฟล์ที่ {RAW_CSV_PATH}")
+        print(f"❌ Error: File not found at {RAW_CSV_PATH}")
         return
 
-    print(f"🚀 เริ่มต้นอ่านไฟล์ EURUSD M1 (Timestamp Column detected)")
+    print(f"🚀 Reading EURUSD M1 file (Timestamp column detected)")
 
     dtype_dict = {
-        'Open': 'float32', 
-        'High': 'float32', 
-        'Low': 'float32', 
-        'Close': 'float32', 
+        'Open': 'float32',
+        'High': 'float32',
+        'Low': 'float32',
+        'Close': 'float32',
         'Volume': 'float32'
     }
-    
+
     chunks = []
     try:
-        # เจาะจงใช้ 'Timestamp' เป็นตัวแปรเวลา
-        reader = pd.read_csv(RAW_CSV_PATH, 
-                            parse_dates=['Timestamp'], 
-                            index_col='Timestamp', 
-                            dtype=dtype_dict, 
-                            chunksize=500000, 
+        # Use 'Timestamp' as the datetime index column
+        reader = pd.read_csv(RAW_CSV_PATH,
+                            parse_dates=['Timestamp'],
+                            index_col='Timestamp',
+                            dtype=dtype_dict,
+                            chunksize=500000,
                             engine='c')
-        
+
         for chunk in tqdm(reader, desc="Loading Data"):
             chunks.append(chunk)
-            
+
         df = pd.concat(chunks)
-        
-        # ปรับชื่อคอลัมน์ให้เป็นพิมพ์เล็กทั้งหมด (Standardization)
+
+        # Standardize column names to lowercase
         df.columns = [c.lower() for c in df.columns]
         df.index.name = 'datetime'
-        
-        # เรียงลำดับเวลาให้ถูกต้อง
+
+        # Sort chronologically
         df.sort_index(inplace=True)
-        
-        print(f"✅ โหลดและเรียงข้อมูลสำเร็จ: {len(df):,} แถว")
+
+        print(f"✅ Loaded and sorted successfully: {len(df):,} rows")
 
         # --- Basic Feature Engineering ---
-        # Forward fill ข้อมูลที่หายไป (ถ้ามี)
+        # Forward fill any missing values
         df.ffill(inplace=True)
-        
-        # คำนวณ Log Return สำหรับงานสถิติ
+
+        # Compute log return for statistical analysis
         df['log_return'] = np.log(df['close'] / df['close'].shift(1))
-        
-        # ลบค่า NaN
+
+        # Drop NaN rows
         df.dropna(inplace=True)
 
-        # บันทึกเป็น Parquet (Snappy compression เพื่อความสมดุลระหว่างความเร็วและขนาดไฟล์)
+        # Save as Parquet (Snappy compression balances speed and file size)
         os.makedirs(os.path.dirname(PROCESSED_PATH), exist_ok=True)
         df.to_parquet(PROCESSED_PATH, engine='pyarrow', compression='snappy')
-        
-        print(f"📦 บันทึก Parquet สำเร็จ: {PROCESSED_PATH}")
-        print(f"⚡ ใช้เวลาทั้งหมด: {time.time() - start_time:.2f} วินาที")
+
+        print(f"📦 Parquet saved successfully: {PROCESSED_PATH}")
+        print(f"⚡ Total time: {time.time() - start_time:.2f}s")
 
     except Exception as e:
-        print(f"❌ เกิดข้อผิดพลาด: {e}")
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     preprocess_data()

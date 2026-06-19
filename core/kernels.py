@@ -3,7 +3,7 @@ from numba import cuda
 
 @cuda.jit
 def calc_features_gpu(close, high, low, window, z_out, atr_out):
-    """คำนวณ Z-Score และ ATR ด้วย GPU"""
+    """Compute Z-Score and ATR on the GPU in a single pass."""
     idx = cuda.grid(1)
     if idx >= window and idx < close.shape[0]:
         # Z-Score Logic

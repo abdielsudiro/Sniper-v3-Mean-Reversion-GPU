@@ -1,7 +1,7 @@
 import numpy as np
 
 def calculate_metrics(pnl_series):
-    """คำนวณสถิติระดับเซียน"""
+    """Calculate net profit, profit factor, and max drawdown."""
     total_net = pnl_series.sum()
     gains = pnl_series[pnl_series > 0].sum()
     losses = abs(pnl_series[pnl_series < 0].sum())

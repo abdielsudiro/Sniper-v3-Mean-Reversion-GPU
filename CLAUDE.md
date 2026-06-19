@@ -20,7 +20,13 @@ Requires an NVIDIA GPU with CUDA support. Set `XGB_DEVICE = 'cpu'` in `config/se
 The scripts run sequentially and are numbered by execution order:
 
 ```bash
+# Path A — from Dukascopy tick data (data/processed/YYYY/MM/DD/ticks.parquet)
+python scripts/00_ticks_to_m1.py  # Tick → M1 OHLCV Parquet (writes to data/processed/eurusd_m1.parquet)
+
+# Path B — from raw CSV export
 python scripts/01_preprocess.py   # CSV → Parquet (reads from data/raw/, writes to data/processed/)
+
+# Common steps
 python scripts/02_train_ml.py     # Train XGBoost models per timeframe (1min, 5min, 15min, 30min)
 python scripts/03_backtest.py     # Run backtest and generate performance dashboard
 ```
@@ -37,11 +43,13 @@ All scripts are standalone entry points (`if __name__ == "__main__"`). Run from 
 
 ## Key Design Notes
 
-- **GPU kernel vs CPU backtest**: `02_train_ml.py` uses the GPU kernel (`core/kernels.py`) for feature engineering. `03_backtest.py` uses pandas rolling for Z-Score/ATR instead — these are not identical implementations.
+- **GPU kernel vs CPU backtest**: `02_train_ml.py` uses the GPU kernel (`core/kernels.py`) for feature engineering. `03_backtest.py` uses `close.rolling().std()` as a proxy for ATR (not true high-low-close ATR) — these two ATR implementations are intentionally different.
 - **Train/test split**: temporal split at `2023-01-01` (train on data before, test on data after).
 - **Strategy features**: `z_score`, `atr`, `hour`, `day_of_week` — all four are used by the XGBoost classifier.
 - **Triple-barrier exit**: TP at `ATR_TP_MULT × ATR`, SL at `ATR_SL_MULT × ATR`, time exit after `HOLD_BARS` bars.
-- **Data paths in scripts are hardcoded** to `/app/data/...` (Docker-style paths) in `01_preprocess.py` and `02_train_ml.py`, while `03_backtest.py` reads paths from `config/settings.py`.
+- **All data paths are derived from `PROJECT_ROOT`** (`os.path.dirname` of the script's location). All three scripts resolve paths relative to the project root — no hardcoded absolute paths.
+- **`03_backtest.py` loads only the 1min model** — `MODEL_SAVE_PATH` in `config/settings.py` defaults to `models/MREV_1MIN_v1.json`. To backtest another timeframe, update that path.
+- **Dashboard output** is saved to `output/plots/sniper_full_dashboard.png` (created automatically).
 
 ## Protected Files (gitignored)
 
