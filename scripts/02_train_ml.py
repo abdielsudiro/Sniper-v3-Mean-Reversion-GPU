@@ -69,7 +69,7 @@ def train_multi_tf():
             print(f"⚠️ Warning: {tf} has no training data in the specified date range.")
             continue
 
-        print(f"🧠 Training XGBoost on GPU for {tf}...")
+        print(f"🧠 Training XGBoost on {XGB_DEVICE.upper()} for {tf}...")
         dtrain = xgb.DMatrix(X_train, label=y_train)
         params = {
             'objective': 'binary:logistic',

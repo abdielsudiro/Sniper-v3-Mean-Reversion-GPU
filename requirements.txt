@@ -10,6 +10,8 @@ numba
 # --- Visualization & Utilities ---
 matplotlib
 tqdm
+python-dotenv
+optuna
 
 # --- Trading Integration ---
 MetaTrader5

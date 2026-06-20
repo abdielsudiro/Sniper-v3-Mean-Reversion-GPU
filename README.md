@@ -53,13 +53,43 @@ To ensure the strategy is not curve-fitted, we randomized trade sequences to sim
 
 ---
 
+## 🚀 Quick Start
+
+```bash
+pip install -r requirements.txt
+cp config/settings.py.example config/settings.py
+cp .env.example .env
+
+# Build M1 data from Dukascopy ticks
+python scripts/00_ticks_to_m1.py
+
+# Train models
+python scripts/02_train_ml.py
+
+# Auto-optimize strategy parameters (writes best params to .env)
+python scripts/04_optimize.py --target 1.2 --trials 500
+
+# Backtest with optimized params
+python scripts/03_backtest.py
+```
+
+## ⚙️ Configuration
+
+Strategy parameters (`Z_THRESHOLD`, `ML_PROB_LIMIT`, ATR multipliers, etc.) live in `.env` at the project root. Running `04_optimize.py` writes the best parameters there automatically — no manual editing needed. See `.env.example` for all supported keys.
+
 ## 📁 Repository Structure
 ```text
-├── core/                # Numba CUDA Kernels & Strategy Logic
-├── live/                # MT5 Live Executor & Daily Logging
-├── scripts/             # Training, Preprocessing & Backtesting
+├── config/              # settings.py (loads .env) + settings.py.example
+├── core/                # Numba CUDA Kernels & Metrics
+├── scripts/             # 00 → 04 pipeline scripts
+│   ├── 00_ticks_to_m1.py   # Dukascopy ticks → M1 OHLCV
+│   ├── 01_preprocess.py    # Raw CSV → Parquet (alternative path)
+│   ├── 02_train_ml.py      # Train XGBoost per timeframe
+│   ├── 03_backtest.py      # Backtest + dashboard
+│   └── 04_optimize.py      # Optuna parameter search → .env
 ├── models/              # XGBoost model weights (.json)
-└── output/              # Performance plots & CSV Reports
+├── .env.example         # Template for strategy parameters
+└── output/              # Performance plots
 ```
 
 ---

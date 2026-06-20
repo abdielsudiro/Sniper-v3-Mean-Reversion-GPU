@@ -1,30 +1,38 @@
 # =================================================================
-# Sniper v3.0 - Project Configuration Template
+# Sniper v3.0 - Configuration
 # =================================================================
-# Copy this file and rename it to 'settings.py', then fill in
-# your real parameter values.
+# Strategy parameters are loaded from .env in the project root.
+# Run scripts/04_optimize.py to auto-generate .env with best params.
+# Path and ML hyperparameters are set here directly.
 # =================================================================
 
 import os
+from dotenv import load_dotenv
+
+# Load .env from project root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
+
+def _float(key, default): return float(os.getenv(key, default))
+def _int(key, default):   return int(os.getenv(key, default))
 
 # --- Path Configuration ---
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BASE_DATA_PATH = os.path.join(PROJECT_ROOT, 'data/processed/eurusd_m1.parquet')
-MODEL_SAVE_PATH = os.path.join(PROJECT_ROOT, 'models/MREV_1MIN_v1.json')
+BASE_DATA_PATH = os.path.join(PROJECT_ROOT, os.getenv('BASE_DATA_PATH', 'data/processed/eurusd_m1.parquet'))
+MODEL_SAVE_PATH = os.path.join(PROJECT_ROOT, os.getenv('MODEL_SAVE_PATH', 'models/1MIN/MREV_1MIN_v1.json'))
 
-# --- Strategy Parameters (standard/public values) ---
-Z_THRESHOLD = 2.0          # Standard statistical threshold
-WINDOW_SIZE = 20           # Number of bars used to compute the rolling mean
-ML_PROB_LIMIT = 0.50       # Minimum model confidence required (50%)
+# --- Strategy Parameters (overridden by .env) ---
+Z_THRESHOLD   = _float('Z_THRESHOLD',   2.0)
+WINDOW_SIZE   = _int  ('WINDOW_SIZE',   20)
+ML_PROB_LIMIT = _float('ML_PROB_LIMIT', 0.50)
 
-# --- Risk Management (template values) ---
-ATR_TP_MULT = 1.0          # Take Profit multiplier
-ATR_SL_MULT = 1.0          # Stop Loss multiplier
-HOLD_BARS = 5              # Maximum holding period (bars)
-SPREAD_COST = 0.00010      # Approximate spread cost (1 pip)
+# --- Risk Management (overridden by .env) ---
+ATR_TP_MULT  = _float('ATR_TP_MULT',  1.0)
+ATR_SL_MULT  = _float('ATR_SL_MULT',  1.0)
+HOLD_BARS    = _int  ('HOLD_BARS',    5)
+SPREAD_COST  = _float('SPREAD_COST',  0.00010)
 
-# --- XGBoost Hyperparameters (default values, not yet optimized) ---
-XGB_N_ESTIMATORS = 100
-XGB_MAX_DEPTH = 3
-XGB_LEARNING_RATE = 0.1
-XGB_DEVICE = 'cuda'        # Use 'cpu' if no GPU is available
+# --- XGBoost Hyperparameters ---
+XGB_N_ESTIMATORS = _int  ('XGB_N_ESTIMATORS', 100)
+XGB_MAX_DEPTH    = _int  ('XGB_MAX_DEPTH',    3)
+XGB_LEARNING_RATE= _float('XGB_LEARNING_RATE',0.1)
+XGB_DEVICE       = os.getenv('XGB_DEVICE', 'cpu')
