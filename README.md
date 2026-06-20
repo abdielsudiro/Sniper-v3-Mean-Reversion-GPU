@@ -95,11 +95,17 @@ Strategy parameters (`Z_THRESHOLD`, `ML_PROB_LIMIT`, ATR multipliers, etc.) live
 │   │                          #   dynamic spread, concurrent-trade guard, MTF confirm
 │   ├── 04_optimize.py         # Optuna optimizer for 03_backtest.py → writes .env
 │   └── 04_optimize_v1.0.py    # Optuna optimizer for 03_backtest_v1.0.py → writes .env
-├── models/
+├── models/                    # gitignored
 │   ├── 1MIN/MREV_1MIN_v1.json
 │   ├── 5MIN/MREV_5MIN_v1.json
 │   ├── 15MIN/MREV_15MIN_v1.json
 │   └── 30MIN/MREV_30MIN_v1.json
+├── data/                      # gitignored
+│   ├── raw/                   # Source CSV files (e.g. EURUSD_M1_Combined_2015_2026.csv)
+│   └── processed/
+│       ├── eurusd_m1.parquet          # Built by 00_ticks_to_m1.py or 01_preprocess.py
+│       ├── EURUSD_M1_*.parquet        # Sample / partial datasets
+│       └── YYYY/MM/DD/ticks.parquet   # Dukascopy daily tick files (input for 00_ticks_to_m1.py)
 ├── output/plots/              # Generated dashboard PNGs
 ├── .env                       # Tuned strategy parameters — auto-written by optimizer (gitignored)
 ├── .env.example               # Documents all supported .env keys with defaults
