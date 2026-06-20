@@ -50,7 +50,8 @@ Strategy parameters live in `.env` (project root, gitignored). `config/settings.
 
 | What to change | Where |
 |---|---|
-| Strategy params (`Z_THRESHOLD`, `ML_PROB_LIMIT`, `ATR_*`, `HOLD_BARS`, `SPREAD_COST`) | `.env` (or run optimizer) |
+| Strategy params (`Z_THRESHOLD`, `ML_PROB_LIMIT`, `ML_PROB_LIMIT_5M`, `ATR_*`, `HOLD_BARS`, `SPREAD_COST`) | `.env` (or run optimizer) |
+| Breakeven stop (`BREAKEVEN_MULT`) | `.env` (0 = disabled; N = move SL to entry once profit ≥ N×ATR) |
 | Enhanced flags (`SESSION_FILTER`, `DYNAMIC_SPREAD`, `MTF_CONFIRM`, `MTF_MODEL_PATH`) | `.env` |
 | Data / model paths (`BASE_DATA_PATH`, `MODEL_SAVE_PATH`) | `.env` |
 | XGBoost device (`XGB_DEVICE=cpu` or `cuda`) | `.env` |
@@ -68,31 +69,34 @@ python scripts/04_optimize.py --target 1.2 --trials 500
 python scripts/04_optimize_v1.0.py --target 1.2 --trials 500
 ```
 
-Both use Optuna TPE (Bayesian) search, print only improvements, stop as soon as the target Profit Factor is reached, and write the best parameters directly to `.env`.
+Both use Optuna TPE (Bayesian) search, print only improvements, stop when the target score is reached, and write the best parameters directly to `.env`. The enhanced optimizer accepts `--metric {pf,sharpe}` to optimize Profit Factor or Sharpe Ratio.
 
 ## Architecture
 
 - **`config/settings.py`** — Loads `.env`, exposes all config as module-level constants. Gitignored; `settings.py.example` is the committed template.
 - **`.env`** — Strategy parameters written by the optimizer. Gitignored.
 - **`core/kernels.py`** — Numba `@cuda.jit` kernel computing Z-Score and ATR in a single pass on GPU. Called with 1D grid/block layout: `[(n+255)//256, 256]`.
-- **`core/metrics.py`** — Post-trade performance metrics (net profit, profit factor, max drawdown).
+- **`core/metrics.py`** — `calculate_metrics()` (backwards-compat) + `calculate_report()` returning Sharpe ratio, Calmar ratio, Recovery Factor, expectancy, avg win/loss.
 - **`scripts/02_train_ml.py`** — Resamples M1 data to multiple timeframes, computes GPU features, trains one XGBoost classifier per timeframe. Models saved to `models/<TF>/MREV_<TF>_v1.json`.
 - **`scripts/03_backtest.py`** — Baseline backtest: vectorized simulation, rolling std as ATR proxy, 1MIN model only, fixed spread.
-- **`scripts/03_backtest_v1.0.py`** — Enhanced backtest: true Wilder ATR, London/NY session filter, dynamic spread by session, bar-by-bar concurrent-trade guard, 5MIN MTF confirmation.
+- **`scripts/03_backtest_v1.0.py`** — Enhanced backtest: true Wilder ATR, session filter, dynamic spread, concurrent-trade guard, MTF confirmation, correct directional ML filter, breakeven stop, per-session stats, Monte Carlo (3-panel).
 - **`scripts/04_optimize.py`** — Baseline Optuna optimizer. Searches `Z_THRESHOLD`, `ML_PROB_LIMIT`, `ATR_*`, `HOLD_BARS`, `SPREAD_COST`.
-- **`scripts/04_optimize_v1.0.py`** — Enhanced Optuna optimizer. Mirrors `03_backtest_v1.0.py` logic exactly; additionally searches `ML_PROB_LIMIT_5M` when `MTF_CONFIRM=true`.
+- **`scripts/04_optimize_v1.0.py`** — Enhanced Optuna optimizer. Mirrors `03_backtest_v1.0.py` exactly; searches `ML_PROB_LIMIT_5M`, `BREAKEVEN_MULT`; supports `--metric {pf,sharpe}`.
 
 ## Key Design Notes
 
-- **Baseline vs enhanced ATR**: `03_backtest.py` uses `close.rolling().std()` as an ATR proxy. `03_backtest_v1.0.py` uses true Wilder ATR (`max(H-L, |H-prev_C|, |L-prev_C|)`). Always pair the correct optimizer with its backtest — do not optimize with v1.0 and backtest with baseline.
+- **Baseline vs enhanced ATR**: `03_backtest.py` uses `close.rolling().std()` as an ATR proxy. `03_backtest_v1.0.py` uses true Wilder ATR (`max(H-L, |H-prev_C|, |L-prev_C|)`). Always pair the correct optimizer with its backtest.
+- **Directional ML filter**: The XGBoost model predicts P(price goes DOWN). For SHORT signals `prob > ML_PROB_LIMIT` is correct. For LONG signals, `1-prob > ML_PROB_LIMIT` (i.e. `prob < 1-ML_PROB_LIMIT`) is used so both directions are filtered consistently. The baseline `03_backtest.py` does not implement this correction.
+- **Breakeven stop**: When `BREAKEVEN_MULT > 0`, the SL is moved to entry (breakeven) once unrealized profit ≥ `BREAKEVEN_MULT × ATR`. Exits under this condition are labeled `BE`. Optimizer searches this parameter automatically.
+- **`ML_PROB_LIMIT_5M`**: Separate threshold for the 5MIN MTF model, written by the optimizer and read by the backtest. Defaults to `ML_PROB_LIMIT` if not set.
 - **GPU kernel vs CPU backtest**: `02_train_ml.py` uses the GPU kernel (`core/kernels.py`) for feature engineering. Both backtests compute ATR on CPU at runtime.
 - **Train/test split**: temporal split at `2025-09-01` (train on data before, test on data after). Adjust in `02_train_ml.py` if the dataset range changes.
 - **Strategy features**: `z_score`, `atr`, `hour`, `day_of_week` — all four are used by the XGBoost classifier.
-- **Triple-barrier exit**: TP at `ATR_TP_MULT × ATR`, SL at `ATR_SL_MULT × ATR`, time exit after `HOLD_BARS` bars.
-- **All data paths are derived from `PROJECT_ROOT`** (`os.path.dirname` of the script's location). All scripts resolve paths relative to the project root — no hardcoded absolute paths.
-- **Model paths**: `MODEL_SAVE_PATH` in `.env` defaults to `models/1MIN/MREV_1MIN_v1.json`. `MTF_MODEL_PATH` defaults to `models/5MIN/MREV_5MIN_v1.json`. Both are used by the v1.0 scripts.
-- **Enhanced flags default to `true`**: `SESSION_FILTER`, `DYNAMIC_SPREAD`, and `MTF_CONFIRM` are all enabled by default in `03_backtest_v1.0.py` and `04_optimize_v1.0.py`. Set them to `false` in `.env` to disable individually.
-- **Dashboard outputs**: `03_backtest.py` → `output/plots/sniper_full_dashboard.png`. `03_backtest_v1.0.py` → `output/plots/sniper_v1_dashboard.png`.
+- **Triple-barrier exit**: TP at `ATR_TP_MULT × ATR`, SL at `ATR_SL_MULT × ATR`, time exit after `HOLD_BARS` bars. Optional breakeven stop (`BREAKEVEN_MULT`).
+- **All data paths are derived from `PROJECT_ROOT`** — no hardcoded absolute paths.
+- **Model paths**: `MODEL_SAVE_PATH` in `.env` defaults to `models/1MIN/MREV_1MIN_v1.json`. `MTF_MODEL_PATH` defaults to `models/5MIN/MREV_5MIN_v1.json`.
+- **Enhanced flags default to `true`**: `SESSION_FILTER`, `DYNAMIC_SPREAD`, and `MTF_CONFIRM` are all enabled by default in the v1.0 scripts. Set them to `false` in `.env` to disable.
+- **Dashboard outputs**: `03_backtest.py` → `output/plots/sniper_full_dashboard.png`. `03_backtest_v1.0.py` → `output/plots/sniper_v1_dashboard.png` + `output/plots/monte_carlo_paths_v1.0.png` (3-panel: equity fan, final PnL histogram, MDD distribution).
 
 ## Protected Files (gitignored)
 
