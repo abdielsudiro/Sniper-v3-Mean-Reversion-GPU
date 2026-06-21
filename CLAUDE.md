@@ -98,6 +98,29 @@ Both use Optuna TPE (Bayesian) search, print only improvements, stop when the ta
 - **Enhanced flags default to `true`**: `SESSION_FILTER`, `DYNAMIC_SPREAD`, and `MTF_CONFIRM` are all enabled by default in the v1.0 scripts. Set them to `false` in `.env` to disable.
 - **Dashboard outputs**: `03_backtest.py` → `output/plots/sniper_full_dashboard.png`. `03_backtest_v1.0.py` → `output/plots/sniper_v1_dashboard.png` + `output/plots/monte_carlo_paths_v1.0.png` (3-panel: equity fan, final PnL histogram, MDD distribution).
 
+## Live Trading
+
+After optimizing parameters, connect to MetaTrader 5:
+
+```bash
+# Add MT5 credentials to .env first (see .env.example MT5 section)
+python live/executor.py --dry-run   # test: signals only, no real orders
+python live/executor.py             # live trading
+```
+
+**`live/executor.py`** reuses the exact same feature computation and signal logic as `03_backtest_v1.0.py`. All strategy params (`Z_THRESHOLD`, `ML_PROB_LIMIT`, `ATR_TP_MULT`, etc.) are read from `.env` automatically. MT5 handles TP/SL exits at the broker level; the executor additionally manages the `HOLD_BARS` time exit and `BREAKEVEN_MULT` SL modification.
+
+Required `.env` additions for live trading:
+| Key | Description |
+|---|---|
+| `MT5_LOGIN` | Account number |
+| `MT5_PASSWORD` | Account password |
+| `MT5_SERVER` | Broker server name (e.g. `ICMarkets-Live`) |
+| `MT5_SYMBOL` | Symbol as shown in MT5 (e.g. `EURUSD` or `EURUSDm`) |
+| `MT5_LOT` | Lot size per trade (e.g. `0.01`) |
+| `MT5_MAGIC` | Integer to tag Sniper orders (e.g. `203001`) |
+| `MT5_PATH` | Optional path to `terminal64.exe` |
+
 ## Protected Files (gitignored)
 
 - `.env` — tuned strategy parameters
