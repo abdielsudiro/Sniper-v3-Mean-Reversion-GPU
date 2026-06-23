@@ -409,6 +409,12 @@ def run():
     df = compute_features(df_raw, WINDOW_SIZE)
     print(f"   Bars after dropna: {len(df):,}  ({df.index[0]} → {df.index[-1]})")
 
+    # ── Out-of-sample backtest window ─────────────────────────────────────────
+    BT_START = os.getenv('BACKTEST_START', '2026-01-01')
+    BT_END   = os.getenv('BACKTEST_END',   '2026-06-19')
+    df = df.loc[BT_START:BT_END]
+    print(f"   Backtest window: {BT_START} → {BT_END}  ({len(df):,} bars)")
+
     # ── 1MIN model ────────────────────────────────────────────────────────────
     print(f"🧠 Loading 1MIN model: {MODEL_SAVE_PATH}")
     model_1m = xgb.Booster()

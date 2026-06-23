@@ -57,7 +57,7 @@ def train_multi_tf():
         y = df_ml[target_col]
 
         # 5. Train/Test Split (temporal mask on index)
-        train_mask = X.index < '2025-09-01'
+        train_mask = (X.index >= '2018-01-01') & (X.index <= '2025-12-31')
 
         X_train = X[train_mask]
         y_train = y[train_mask]
