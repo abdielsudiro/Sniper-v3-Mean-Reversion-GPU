@@ -41,7 +41,14 @@ MIN_TRADES = 100   # raised from 50 — fewer trades = more noise, less statisti
 # ── Feature flags (from .env) ─────────────────────────────────────────────────
 def _bool(key, default): return os.getenv(key, str(default)).lower() in ('1', 'true', 'yes')
 
-SESSION_FILTER = _bool('SESSION_FILTER', True)
+_sw_raw = os.getenv('SESSION_WHITELIST', '').strip()
+if _sw_raw and _sw_raw.lower() != 'all':
+    SESSION_WHITELIST = set(s.strip() for s in _sw_raw.lower().split(','))
+elif _bool('SESSION_FILTER', True) and not _sw_raw:
+    SESSION_WHITELIST = {'london', 'london_ny', 'ny'}
+else:
+    SESSION_WHITELIST = None
+
 DYNAMIC_SPREAD = _bool('DYNAMIC_SPREAD', True)
 MTF_CONFIRM    = _bool('MTF_CONFIRM',    True)
 MTF_MODEL_PATH = os.path.join(PROJECT_ROOT,
@@ -75,7 +82,9 @@ def session_label(hour: int, dow: int) -> str:
 
 
 def is_tradeable(hour: int, dow: int) -> bool:
-    return session_label(hour, dow) in ('london', 'london_ny', 'ny')
+    if SESSION_WHITELIST is None:
+        return True
+    return session_label(hour, dow) in SESSION_WHITELIST
 
 
 def compute_features(df: pd.DataFrame, window: int) -> pd.DataFrame:
@@ -229,11 +238,12 @@ def load_assets():
         df['prob_5m'] = 0.5   # neutral → 0.5 < (1-0.5) is False, 0.5 > 0.5 is False
         # handled by mtf_active=False in simulate_trades (bypasses the filter entirely)
 
-    if SESSION_FILTER:
+    if SESSION_WHITELIST is not None:
         df['tradeable'] = df.apply(
             lambda r: is_tradeable(int(r['hour']), int(r['day_of_week'])), axis=1)
         pct = (~df['tradeable']).mean() * 100
-        print(f"📅 Session filter: {pct:.1f}% of bars excluded")
+        wl_str = ','.join(sorted(SESSION_WHITELIST))
+        print(f"📅 Session whitelist: {wl_str} → {pct:.1f}% of bars excluded")
     else:
         df['tradeable'] = True
 
@@ -242,7 +252,8 @@ def load_assets():
         if DYNAMIC_SPREAD else SPREAD_COST, axis=1)
 
     print(f"✅ Ready — {len(df):,} bars  ({df.index[0]} → {df.index[-1]})")
-    print(f"   Flags: SESSION={SESSION_FILTER}  DYN_SPREAD={DYNAMIC_SPREAD}  "
+    wl_str = ','.join(sorted(SESSION_WHITELIST)) if SESSION_WHITELIST else 'all'
+    print(f"   Flags: SESSION={wl_str}  DYN_SPREAD={DYNAMIC_SPREAD}  "
           f"MTF={mtf_active}\n")
     return df, mtf_active
 

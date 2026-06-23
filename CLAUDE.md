@@ -52,7 +52,8 @@ Strategy parameters live in `.env` (project root, gitignored). `config/settings.
 |---|---|
 | Strategy params (`Z_THRESHOLD`, `ML_PROB_LIMIT`, `ML_PROB_LIMIT_5M`, `ATR_*`, `HOLD_BARS`, `SPREAD_COST`) | `.env` (or run optimizer) |
 | Breakeven stop (`BREAKEVEN_MULT`) | `.env` (0 = disabled; N = move SL to entry once profit ≥ N×ATR) |
-| Enhanced flags (`SESSION_FILTER`, `DYNAMIC_SPREAD`, `MTF_CONFIRM`, `MTF_MODEL_PATH`) | `.env` |
+| Session whitelist (`SESSION_WHITELIST`) | `.env` (comma-separated: `asian,london,london_ny,ny,sunday` / `all` = no filter) |
+| Enhanced flags (`DYNAMIC_SPREAD`, `MTF_CONFIRM`, `MTF_MODEL_PATH`) | `.env` |
 | Data / model paths (`BASE_DATA_PATH`, `MODEL_SAVE_PATH`) | `.env` |
 | XGBoost device (`XGB_DEVICE=cpu` or `cuda`) | `.env` |
 | XGBoost hyperparams (`XGB_N_ESTIMATORS`, etc.) | `.env` or `settings.py` |
@@ -95,7 +96,8 @@ Both use Optuna TPE (Bayesian) search, print only improvements, stop when the ta
 - **Triple-barrier exit**: TP at `ATR_TP_MULT × ATR`, SL at `ATR_SL_MULT × ATR`, time exit after `HOLD_BARS` bars. Optional breakeven stop (`BREAKEVEN_MULT`).
 - **All data paths are derived from `PROJECT_ROOT`** — no hardcoded absolute paths.
 - **Model paths**: `MODEL_SAVE_PATH` in `.env` defaults to `models/1MIN/MREV_1MIN_v1.json`. `MTF_MODEL_PATH` defaults to `models/5MIN/MREV_5MIN_v1.json`.
-- **Enhanced flags default to `true`**: `SESSION_FILTER`, `DYNAMIC_SPREAD`, and `MTF_CONFIRM` are all enabled by default in the v1.0 scripts. Set them to `false` in `.env` to disable.
+- **Session whitelist**: `SESSION_WHITELIST` in `.env` controls which sessions are tradeable. Comma-separated values from: `asian`, `london`, `london_ny`, `ny`, `sunday`. Set to `all` to disable filtering. If not set, falls back to legacy `SESSION_FILTER=true` behavior (london, london_ny, ny). Session definitions (UTC): london (07-13), london_ny (13-16), ny (16-21), asian (else), sunday (dow=6).
+- **Enhanced flags default to `true`**: `DYNAMIC_SPREAD` and `MTF_CONFIRM` are enabled by default in the v1.0 scripts. Set them to `false` in `.env` to disable.
 - **Dashboard outputs**: `03_backtest.py` → `output/plots/sniper_full_dashboard.png`. `03_backtest_v1.0.py` → `output/plots/sniper_v1_dashboard.png` + `output/plots/monte_carlo_paths_v1.0.png` (3-panel: equity fan, final PnL histogram, MDD distribution).
 
 ## Live Trading

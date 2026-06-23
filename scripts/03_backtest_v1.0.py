@@ -42,7 +42,16 @@ register_matplotlib_converters()
 # ── Feature flags (from .env) ─────────────────────────────────────────────────
 def _bool(key, default): return os.getenv(key, str(default)).lower() in ('1', 'true', 'yes')
 
-SESSION_FILTER = _bool('SESSION_FILTER', True)
+# SESSION_WHITELIST: comma-separated session names to trade, or "all" to disable filtering
+# Valid names: asian, london, london_ny, ny, sunday
+_sw_raw = os.getenv('SESSION_WHITELIST', '').strip()
+if _sw_raw and _sw_raw.lower() != 'all':
+    SESSION_WHITELIST = set(s.strip() for s in _sw_raw.lower().split(','))
+elif _bool('SESSION_FILTER', True) and not _sw_raw:
+    SESSION_WHITELIST = {'london', 'london_ny', 'ny'}  # legacy default
+else:
+    SESSION_WHITELIST = None  # None = all sessions allowed
+
 DYNAMIC_SPREAD = _bool('DYNAMIC_SPREAD', True)
 MTF_CONFIRM    = _bool('MTF_CONFIRM',    True)
 MTF_MODEL_PATH = os.path.join(
@@ -92,7 +101,9 @@ def session_label(hour: int, day_of_week: int) -> str:
 
 
 def is_tradeable_session(hour: int, day_of_week: int) -> bool:
-    return session_label(hour, day_of_week) in ('london', 'london_ny', 'ny')
+    if SESSION_WHITELIST is None:
+        return True
+    return session_label(hour, day_of_week) in SESSION_WHITELIST
 
 
 def compute_features(df: pd.DataFrame, window: int) -> pd.DataFrame:
@@ -421,15 +432,16 @@ def run():
         MTF_CONFIRM_ACTIVE = False
 
     # ── Session filter ────────────────────────────────────────────────────────
-    if SESSION_FILTER:
+    if SESSION_WHITELIST is not None:
         tradeable = df.apply(
             lambda r: is_tradeable_session(int(r['hour']), int(r['day_of_week'])), axis=1
         )
         df['tradeable'] = tradeable
-        print(f"📅 Session filter: {(~tradeable).sum():,} bars excluded "
-              f"({(~tradeable).mean()*100:.1f}%)")
+        print(f"📅 Session whitelist: {','.join(sorted(SESSION_WHITELIST))} "
+              f"→ {(~tradeable).sum():,} bars excluded ({(~tradeable).mean()*100:.1f}%)")
     else:
         df['tradeable'] = True
+        print(f"📅 Session filter: disabled (all sessions)")
 
     # ── Signal generation ─────────────────────────────────────────────────────
     # Model predicts P(price goes DOWN in next N bars).
@@ -521,7 +533,8 @@ def run():
     print(f"    True ATR (H-L-C)        : always on")
     print(f"    Correct ML direction    : always on")
     print(f"    Concurrent-trade guard  : always on")
-    print(f"    Session filter          : {SESSION_FILTER}")
+    wl_str = ','.join(sorted(SESSION_WHITELIST)) if SESSION_WHITELIST else 'all'
+    print(f"    Session whitelist       : {wl_str}")
     print(f"    Dynamic spread          : {DYNAMIC_SPREAD}")
     print(f"    MTF confirmation        : {MTF_CONFIRM_ACTIVE}")
     print(f"    Breakeven stop (mult)   : {BREAKEVEN_MULT if BREAKEVEN_MULT > 0 else 'disabled'}")

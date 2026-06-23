@@ -15,7 +15,7 @@ Required .env keys (add these to your existing .env):
 
 Optional .env keys (already used by backtest, respected here too):
     Z_THRESHOLD, ML_PROB_LIMIT, ATR_TP_MULT, ATR_SL_MULT,
-    HOLD_BARS, BREAKEVEN_MULT, SESSION_FILTER, DYNAMIC_SPREAD,
+    HOLD_BARS, BREAKEVEN_MULT, SESSION_WHITELIST, DYNAMIC_SPREAD,
     MTF_CONFIRM, MTF_MODEL_PATH, ML_PROB_LIMIT_5M, WINDOW_SIZE
 
 Usage:
@@ -63,7 +63,14 @@ MT5_PATH      = os.path.normpath(_mt5_path_raw) if _mt5_path_raw else None
 def _bool(key, default):
     return os.getenv(key, str(default)).lower() in ('1', 'true', 'yes')
 
-SESSION_FILTER = _bool('SESSION_FILTER', True)
+_sw_raw = os.getenv('SESSION_WHITELIST', '').strip()
+if _sw_raw and _sw_raw.lower() != 'all':
+    SESSION_WHITELIST = set(s.strip() for s in _sw_raw.lower().split(','))
+elif _bool('SESSION_FILTER', True) and not _sw_raw:
+    SESSION_WHITELIST = {'london', 'london_ny', 'ny'}
+else:
+    SESSION_WHITELIST = None
+
 MTF_CONFIRM    = _bool('MTF_CONFIRM',    True)
 MTF_MODEL_PATH = os.path.join(
     PROJECT_ROOT, os.getenv('MTF_MODEL_PATH', 'models/5MIN/MREV_5MIN_v1.json')
@@ -121,7 +128,9 @@ def session_label(hour: int, dow: int) -> str:
 
 
 def is_tradeable_session(hour: int, dow: int) -> bool:
-    return session_label(hour, dow) in ('london', 'london_ny', 'ny')
+    if SESSION_WHITELIST is None:
+        return True
+    return session_label(hour, dow) in SESSION_WHITELIST
 
 
 def true_atr(df: pd.DataFrame, window: int) -> pd.Series:
@@ -323,7 +332,8 @@ def run(dry_run: bool = False):
     log.info(f"  ATR TP/SL   : {ATR_TP_MULT}× / {ATR_SL_MULT}×")
     log.info(f"  HOLD_BARS   : {HOLD_BARS}")
     log.info(f"  BREAKEVEN   : {BREAKEVEN_MULT if BREAKEVEN_MULT > 0 else 'disabled'}")
-    log.info(f"  SESSION_FILTER: {SESSION_FILTER}")
+    wl_str = ','.join(sorted(SESSION_WHITELIST)) if SESSION_WHITELIST else 'all'
+    log.info(f"  SESSION_WHITELIST: {wl_str}")
     log.info(f"  MTF_CONFIRM : {MTF_CONFIRM}")
     log.info(f"  DRY RUN     : {dry_run}")
     log.info("-" * 60)
@@ -463,7 +473,7 @@ def run(dry_run: bool = False):
                 be_activated = False
 
                 # ── Session filter ────────────────────────────────────────────
-                if SESSION_FILTER and not is_tradeable_session(hour, dow):
+                if not is_tradeable_session(hour, dow):
                     log.info(f"   Outside tradeable session — no signal.")
                     time.sleep(POLL_INTERVAL)
                     continue
